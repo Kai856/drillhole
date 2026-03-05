@@ -2,7 +2,6 @@
 Adavale 3D Geological Model/
 Adavale_Basin_Petrel/
 *.npy
-*.pt
 output/stl_web/
 output/web/voxels.json
 output/formation_masks.csv

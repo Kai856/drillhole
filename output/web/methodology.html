@@ -38,6 +38,8 @@
         .arch-diagram .arrow { color: var(--accent); }
         ul { color: var(--text-muted); font-size: 15px; padding-left: 24px; margin-bottom: 16px; }
         li { margin-bottom: 8px; }
+        .callout { background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2); border-radius: 8px; padding: 16px 20px; margin: 20px 0; font-size: 14px; color: var(--text-muted); }
+        .callout strong { color: var(--text); }
     </style>
 </head>
 <body>
@@ -48,32 +50,66 @@
     </a>
 
     <h1>Methodology</h1>
-    <p class="subtitle">Neural field prediction of subsurface geology in the Adavale Basin, Queensland, Australia.</p>
+    <p class="subtitle">Neural field prediction of subsurface geology from real drill hole data in the Adavale Basin, Queensland, Australia.</p>
 
-    <h2>1. Data Source</h2>
-    <p>The input data is a <strong>3D voxel grid</strong> exported from a GoCAD geological model of the Adavale Basin. The grid has dimensions <strong>512 x 634 x 335</strong> (108,584,480 voxels), with a spatial resolution of 500m x 500m x 20m (horizontal x vertical). The coordinate reference system is <strong>GDA94 / MGA Zone 55</strong>.</p>
-    <p>Each voxel contains an integer lithology code (1-13) identifying one of 13 geological formations, ranging from deep basement granite to shallow Cenozoic sediments. The data was loaded from a GoCAD <code>.vop1</code> binary file (big-endian float32, Fortran column-major order).</p>
-
-    <div class="card">
-        <h3>Grid Parameters</h3>
-        <div class="metric"><span class="label">Dimensions</span><span class="val">512 x 634 x 335</span></div>
-        <div class="metric"><span class="label">Total Voxels</span><span class="val">108,584,480</span></div>
-        <div class="metric"><span class="label">Valid Voxels</span><span class="val">~102M</span></div>
-        <div class="metric"><span class="label">Horizontal Spacing</span><span class="val">500m x 500m</span></div>
-        <div class="metric"><span class="label">Vertical Spacing</span><span class="val">20m</span></div>
-        <div class="metric"><span class="label">Origin (X, Y, Z)</span><span class="val">170250, 7329750, 690</span></div>
-        <div class="metric"><span class="label">Formations</span><span class="val">13 classes</span></div>
+    <div class="callout">
+        <strong>Key insight:</strong> This model is trained exclusively on real drill hole data &mdash; 86 wells with logged formation contacts. It learns to predict subsurface geology across the entire 256km &times; 317km basin from these sparse 1D observations, simulating what a mining or exploration company would experience when using their own drilling data.
     </div>
 
-    <h2>2. Architecture</h2>
-    <p>The model is a <strong>neural field</strong> (also called a neural implicit function): a function <code>f(x, y, z) &rarr; lithology class</code> that takes a 3D coordinate and predicts the geological formation at that location.</p>
+    <h2>1. Data Source</h2>
+    <p>The training data consists of <strong>86 real drill holes</strong> extracted from a GeoModeller project of the Adavale Basin. Each well has a collar location (X, Y, Z), total depth, and a geological log recording which formation was encountered at each depth interval.</p>
+    <p>The wells contain <strong>353 formation intervals</strong> across 13 geological formations, ranging from shallow Glendower Formation and Eromanga Basin sediments to deep basement granite. Most wells penetrate only the upper 2&ndash;4 formations; only a handful reach the deeper Devonian units (Boree Salt, Cooladdi Dolomite, Bury Limestone).</p>
+    <p>For ground-truth evaluation, a complete 3D voxel model (512 &times; 634 &times; 335, ~109M voxels) built by geologists from all available data is used as reference.</p>
 
-    <p>The architecture consists of:</p>
+    <div class="card">
+        <h3>Drill Hole Data</h3>
+        <div class="metric"><span class="label">Total Wells</span><span class="val">86</span></div>
+        <div class="metric"><span class="label">Formation Intervals</span><span class="val">353</span></div>
+        <div class="metric"><span class="label">Formations</span><span class="val">13</span></div>
+        <div class="metric"><span class="label">Basin Extent</span><span class="val">256km &times; 317km</span></div>
+        <div class="metric"><span class="label">Depth Range</span><span class="val">0 &ndash; 5,990m</span></div>
+        <div class="metric"><span class="label">Coordinate System</span><span class="val">GDA94 / MGA Zone 55</span></div>
+    </div>
+
+    <div class="card">
+        <h3>Formation Frequency in Drill Data</h3>
+        <div class="metric"><span class="label">Eromanga Basin</span><span class="val">86 wells</span></div>
+        <div class="metric"><span class="label">Galilee Basin</span><span class="val">45 wells</span></div>
+        <div class="metric"><span class="label">Etonvale Fm</span><span class="val">41 wells</span></div>
+        <div class="metric"><span class="label">Buckabie Fm</span><span class="val">31 wells</span></div>
+        <div class="metric"><span class="label">Cooladdi Dolomite</span><span class="val">25 wells</span></div>
+        <div class="metric"><span class="label">Log Creek Fm</span><span class="val">22 wells</span></div>
+        <div class="metric"><span class="label">Lissoy Fm</span><span class="val">19 wells</span></div>
+        <div class="metric"><span class="label">Basement/Granite</span><span class="val">16 wells</span></div>
+        <div class="metric"><span class="label">Glendower Fm</span><span class="val">13 wells</span></div>
+        <div class="metric"><span class="label">Gumbardo Fm</span><span class="val">12 wells</span></div>
+        <div class="metric"><span class="label">Eastwood Fm</span><span class="val">10 wells</span></div>
+        <div class="metric"><span class="label">Bury Limestone</span><span class="val">8 wells</span></div>
+        <div class="metric"><span class="label">Boree Fm (Salt)</span><span class="val">6 wells</span></div>
+    </div>
+
+    <h2>2. Train / Test Split</h2>
+    <p>The 86 wells are split into <strong>66 training wells</strong> and <strong>20 holdout test wells</strong> (random shuffle, seed=42). The model is trained only on data from the 66 training wells and never sees the 20 test wells during training.</p>
+    <p>Each well's formation intervals are sampled at 20m vertical spacing (matching the voxel grid resolution) to produce discrete training points. Each point is a 3D coordinate (X, Y, elevation) paired with a formation label.</p>
+    <p>This simulates the real-world scenario: a company provides their drilling data, the model trains on it, and then predicts at undrilled locations.</p>
+
+    <div class="card">
+        <h3>Split Statistics</h3>
+        <div class="metric"><span class="label">Training Wells</span><span class="val">66</span></div>
+        <div class="metric"><span class="label">Test Wells (Holdout)</span><span class="val">20</span></div>
+        <div class="metric"><span class="label">Training Points</span><span class="val">7,188</span></div>
+        <div class="metric"><span class="label">Test Points</span><span class="val">2,082</span></div>
+        <div class="metric"><span class="label">Sample Spacing</span><span class="val">20m (vertical)</span></div>
+    </div>
+
+    <h2>3. Architecture</h2>
+    <p>The model is a <strong>neural field</strong>: a function <code>f(x, y, z) &rarr; lithology class</code> that takes a 3D coordinate and predicts the geological formation at that location. The architecture is deeper than typical neural fields to help with the sparse data regime.</p>
+
     <ul>
-        <li><strong>Fourier positional encoding</strong> with 10 frequency bands. Each input coordinate is expanded into sine and cosine components at exponentially increasing frequencies (2^0 to 2^9), producing a 63-dimensional encoding from the 3 input coordinates. This enables the network to learn high-frequency spatial patterns.</li>
-        <li><strong>5-layer MLP</strong> with 256 hidden units per layer, using ReLU activations.</li>
-        <li><strong>Skip connection</strong> at the mid-layer (layer 3), where the original positional encoding is concatenated back into the hidden representation. This helps preserve fine spatial detail through the network depth.</li>
-        <li><strong>Classification head</strong>: a linear layer mapping from 256 to 13 output logits.</li>
+        <li><strong>Fourier positional encoding</strong> with 10 frequency bands (2^0 to 2^9). Expands 3 input coordinates into a 63-dimensional vector of sine/cosine components, enabling the network to represent sharp geological boundaries.</li>
+        <li><strong>8-layer MLP</strong> with 256 hidden units per layer, ReLU activations.</li>
+        <li><strong>Skip connection</strong> at the mid-layer (layer 4), concatenating the original positional encoding back into the hidden state.</li>
+        <li><strong>Classification head</strong>: Linear(256, 13) producing logits for each formation.</li>
     </ul>
 
     <div class="arch-diagram">
@@ -81,85 +117,103 @@
         <span class="layer">Positional Encoding (63-dim)</span> <span class="arrow">&rarr;</span><br>
         <span class="layer">Linear(63, 256) + ReLU</span> <span class="arrow">&rarr;</span>
         <span class="layer">Linear(256, 256) + ReLU</span> <span class="arrow">&rarr;</span><br>
+        <span class="layer">Linear(256, 256) + ReLU</span> <span class="arrow">&rarr;</span>
+        <span class="layer">Linear(256, 256) + ReLU</span> <span class="arrow">&rarr;</span><br>
         <span style="color:var(--accent)">[skip: concat encoding]</span> <span class="arrow">&rarr;</span>
         <span class="layer">Linear(319, 256) + ReLU</span> <span class="arrow">&rarr;</span><br>
         <span class="layer">Linear(256, 256) + ReLU</span> <span class="arrow">&rarr;</span>
+        <span class="layer">Linear(256, 256) + ReLU</span> <span class="arrow">&rarr;</span>
+        <span class="layer">Linear(256, 256) + ReLU</span> <span class="arrow">&rarr;</span><br>
         <span class="layer">Linear(256, 13)</span> <span class="arrow">&rarr;</span>
         <span class="layer">logits</span>
     </div>
 
     <div class="card">
         <h3>Model Parameters</h3>
-        <div class="metric"><span class="label">Total Parameters</span><span class="val">~530K</span></div>
+        <div class="metric"><span class="label">Total Parameters</span><span class="val">496,397</span></div>
         <div class="metric"><span class="label">Positional Encoding Freqs</span><span class="val">10</span></div>
         <div class="metric"><span class="label">Hidden Dim</span><span class="val">256</span></div>
-        <div class="metric"><span class="label">Layers</span><span class="val">5</span></div>
-        <div class="metric"><span class="label">Skip Connection</span><span class="val">At layer 3</span></div>
-    </div>
-
-    <h2>3. Train / Validation Split</h2>
-    <p>Instead of a random voxel-level split (which would leak spatial information), the model uses a <strong>drill-hole holdout strategy</strong> designed to simulate real-world prediction scenarios.</p>
-    <p><strong>100 synthetic wells</strong> are randomly placed across the basin (seed=42). Each well is a 10x10 cell block (5km x 5km) extending through the entire depth of the model. All voxels within these well columns are held out from training &mdash; the model never sees any data from these locations.</p>
-    <p>This means the model must <strong>spatially interpolate</strong> to predict geology at the holdout locations, just as it would when predicting at a real undrilled location. This is a much harder test than random splitting, which would allow the model to memorize nearby voxels.</p>
-
-    <div class="card">
-        <h3>Split Statistics</h3>
-        <div class="metric"><span class="label">Method</span><span class="val">Drill-hole holdout</span></div>
-        <div class="metric"><span class="label">Number of Wells</span><span class="val">100</span></div>
-        <div class="metric"><span class="label">Well Size</span><span class="val">5km x 5km (full depth)</span></div>
-        <div class="metric"><span class="label">Training Voxels</span><span class="val">99,043,754</span></div>
-        <div class="metric"><span class="label">Validation Voxels</span><span class="val">3,116,115</span></div>
-        <div class="metric"><span class="label">Val Fraction</span><span class="val">3.3%</span></div>
+        <div class="metric"><span class="label">Layers</span><span class="val">8 (+ skip)</span></div>
     </div>
 
     <h2>4. Training</h2>
-    <p>The model is trained for <strong>30 epochs</strong> using the following configuration:</p>
+    <p>Training on sparse drill hole data presents unique challenges: the model has only <strong>7,188 training points</strong> to learn a function over a volume spanning hundreds of kilometers. Key training decisions:</p>
     <ul>
-        <li><strong>Loss function</strong>: Cross-entropy with inverse-frequency class weights, ensuring rare formations (like Boree Salt) receive higher loss penalties.</li>
+        <li><strong>Loss function</strong>: Cross-entropy with inverse-frequency class weights. Eromanga Basin (63% of data) is down-weighted; rare formations like Boree Salt (0.9%) are up-weighted.</li>
         <li><strong>Optimizer</strong>: Adam with initial learning rate 1e-3.</li>
-        <li><strong>Scheduler</strong>: Cosine annealing (decays lr to ~0 over 30 epochs).</li>
-        <li><strong>Batch size</strong>: 131,072 voxels per batch.</li>
-        <li><strong>Epoch subsampling</strong>: Each epoch randomly samples 10M voxels from the 99M training set (not all voxels are seen each epoch). This dramatically speeds up training while maintaining convergence.</li>
-        <li><strong>Validation subsampling</strong>: 2M voxels sampled from the 3.1M holdout set each epoch.</li>
-        <li><strong>Coordinate normalization</strong>: All (x, y, z) coordinates are normalized to [-1, 1] before input.</li>
-        <li><strong>Device</strong>: Apple MPS (Metal Performance Shaders).</li>
+        <li><strong>Scheduler</strong>: Cosine annealing over 200 epochs.</li>
+        <li><strong>Batch size</strong>: 4,096 (entire dataset fits in ~2 batches).</li>
+        <li><strong>Data augmentation</strong>: Small spatial jitter (Gaussian noise, &sigma;=0.005 in normalized space) added to coordinates each epoch. This prevents overfitting to exact well locations and encourages smooth spatial interpolation.</li>
+        <li><strong>Coordinate normalization</strong>: All (x, y, z) coordinates normalized to [-1, 1].</li>
     </ul>
 
     <div class="card">
         <h3>Training Configuration</h3>
-        <div class="metric"><span class="label">Epochs</span><span class="val">30</span></div>
-        <div class="metric"><span class="label">Batch Size</span><span class="val">131,072</span></div>
+        <div class="metric"><span class="label">Epochs</span><span class="val">200</span></div>
+        <div class="metric"><span class="label">Batch Size</span><span class="val">4,096</span></div>
         <div class="metric"><span class="label">Learning Rate</span><span class="val">1e-3 (cosine)</span></div>
-        <div class="metric"><span class="label">Samples / Epoch</span><span class="val">10M (of 99M)</span></div>
-        <div class="metric"><span class="label">Val Samples / Epoch</span><span class="val">2M (of 3.1M)</span></div>
-        <div class="metric"><span class="label">Final Train Loss</span><span class="val">0.150</span></div>
-        <div class="metric"><span class="label">Final Val Loss</span><span class="val">0.256</span></div>
-        <div class="metric"><span class="label">Best Val Accuracy</span><span class="val green">94.9%</span></div>
+        <div class="metric"><span class="label">Augmentation</span><span class="val">Spatial jitter (&sigma;=0.005)</span></div>
+        <div class="metric"><span class="label">Final Train Loss</span><span class="val">0.201</span></div>
+        <div class="metric"><span class="label">Final Test Loss</span><span class="val">2.953</span></div>
+        <div class="metric"><span class="label">Best Holdout Accuracy</span><span class="val green">76.2%</span></div>
     </div>
 
     <h2>5. Results</h2>
-    <p>The model achieves <strong>94.9% overall validation accuracy</strong> on the held-out drill holes. Performance varies by formation &mdash; large, spatially continuous formations like Glendower and Eromanga are predicted near-perfectly, while thin or spatially complex units like Boree Salt are harder.</p>
+    <p>The model achieves <strong>76.2% accuracy on 20 held-out wells</strong> it never saw during training. This is a realistic measure of how well sparse drilling data can predict geology at undrilled locations.</p>
+    <p>Performance varies dramatically by formation. Large, spatially continuous formations (Eromanga, Glendower) are predicted well. Thin, rare, or spatially complex formations (Boree Salt, Lissoy, Cooladdi) are poorly predicted &mdash; the model simply doesn't have enough examples to learn their spatial distribution.</p>
 
     <div class="card">
-        <h3>Per-Formation Validation Accuracy</h3>
-        <div class="metric"><span class="label">Glendower Fm</span><span class="val green">99.96%</span></div>
-        <div class="metric"><span class="label">Bury Limestone</span><span class="val green">96.75%</span></div>
-        <div class="metric"><span class="label">Eromanga Basin</span><span class="val green">96.17%</span></div>
-        <div class="metric"><span class="label">Galilee Basin</span><span class="val green">95.50%</span></div>
-        <div class="metric"><span class="label">Granite (Basement)</span><span class="val green">95.35%</span></div>
-        <div class="metric"><span class="label">Buckabie Fm</span><span class="val green">95.22%</span></div>
-        <div class="metric"><span class="label">Eastwood Fm</span><span class="val">89.77%</span></div>
-        <div class="metric"><span class="label">Gumbardo Fm</span><span class="val">89.20%</span></div>
-        <div class="metric"><span class="label">Log Creek Fm</span><span class="val">87.50%</span></div>
-        <div class="metric"><span class="label">Etonvale Fm</span><span class="val">87.12%</span></div>
-        <div class="metric"><span class="label">Cooladdi Dolomite</span><span class="val amber">74.97%</span></div>
-        <div class="metric"><span class="label">Lissoy Fm</span><span class="val amber">66.39%</span></div>
-        <div class="metric"><span class="label">Boree Fm (Salt)</span><span class="val red">47.98%</span></div>
+        <h3>Per-Formation Holdout Accuracy</h3>
+        <div class="metric"><span class="label">Eromanga Basin</span><span class="val green">90.2%</span></div>
+        <div class="metric"><span class="label">Glendower Fm</span><span class="val green">72.1%</span></div>
+        <div class="metric"><span class="label">Granite (Basement)</span><span class="val green">69.2%</span></div>
+        <div class="metric"><span class="label">Buckabie Fm</span><span class="val">65.0%</span></div>
+        <div class="metric"><span class="label">Gumbardo Fm</span><span class="val">64.3%</span></div>
+        <div class="metric"><span class="label">Galilee Basin</span><span class="val">64.2%</span></div>
+        <div class="metric"><span class="label">Bury Limestone</span><span class="val">56.8%</span></div>
+        <div class="metric"><span class="label">Etonvale Fm</span><span class="val amber">34.8%</span></div>
+        <div class="metric"><span class="label">Log Creek Fm</span><span class="val amber">30.8%</span></div>
+        <div class="metric"><span class="label">Cooladdi Dolomite</span><span class="val red">12.5%</span></div>
+        <div class="metric"><span class="label">Eastwood Fm</span><span class="val red">0.0%</span></div>
+        <div class="metric"><span class="label">Lissoy Fm</span><span class="val red">0.0%</span></div>
+        <div class="metric"><span class="label">Boree Fm (Salt)</span><span class="val red">0.0%</span></div>
     </div>
 
-    <h2>6. Inference & Visualization</h2>
-    <p>The best checkpoint is used to predict lithology for all 109M voxels in the original grid, producing a complete 3D predicted volume at full resolution. This volume is subsampled (every 10th voxel) and exported as JSON for the interactive web viewer.</p>
-    <p>The viewer renders <strong>100 validation drill holes</strong> showing real lithology from the ground truth volume. Users can select rectangular areas on the basin and reveal the neural field's predictions in those regions, allowing direct visual comparison between known well data and model predictions.</p>
+    <h2>6. Full Volume Comparison</h2>
+    <p>As an additional evaluation, the trained model predicts lithology for all 102M valid voxels in the basin. These predictions are compared against the geologist-interpreted 3D model (which was built using all available data including seismic, outcrop maps, and structural interpretation &mdash; far more than just drill holes).</p>
+    <p>The overall volume accuracy is <strong>43.5%</strong>. This is expected: 86 sparse drill holes cannot capture the full complexity of a 3D geological model built from multiple data sources. The model correctly identifies the broad stratigraphy but misses detailed structural features.</p>
+
+    <div class="card">
+        <h3>Volume Comparison (vs Full Geological Model)</h3>
+        <div class="metric"><span class="label">Overall Accuracy</span><span class="val amber">43.5%</span></div>
+        <div class="metric"><span class="label">Voxels Compared</span><span class="val">102,159,869</span></div>
+        <div class="metric"><span class="label">Eromanga Basin</span><span class="val green">89.5%</span></div>
+        <div class="metric"><span class="label">Glendower Fm</span><span class="val">70.6%</span></div>
+        <div class="metric"><span class="label">Galilee Basin</span><span class="val">59.0%</span></div>
+        <div class="metric"><span class="label">Buckabie Fm</span><span class="val">57.7%</span></div>
+        <div class="metric"><span class="label">Bury Limestone</span><span class="val">46.6%</span></div>
+        <div class="metric"><span class="label">Log Creek Fm</span><span class="val amber">32.5%</span></div>
+        <div class="metric"><span class="label">Boree Fm (Salt)</span><span class="val amber">31.2%</span></div>
+        <div class="metric"><span class="label">Eastwood Fm</span><span class="val amber">30.7%</span></div>
+        <div class="metric"><span class="label">Granite (Basement)</span><span class="val amber">28.7%</span></div>
+        <div class="metric"><span class="label">Gumbardo Fm</span><span class="val red">24.5%</span></div>
+        <div class="metric"><span class="label">Etonvale Fm</span><span class="val red">23.0%</span></div>
+        <div class="metric"><span class="label">Cooladdi Dolomite</span><span class="val red">10.2%</span></div>
+        <div class="metric"><span class="label">Lissoy Fm</span><span class="val red">9.4%</span></div>
+    </div>
+
+    <h2>7. Inference & Visualization</h2>
+    <p>The best checkpoint predicts lithology for all 109M voxels, producing a full 3D predicted volume. This is subsampled (every 10th voxel) and exported as JSON for the interactive web viewer.</p>
+    <p>The viewer displays all <strong>86 real drill holes</strong> with their logged formations. Training wells are shown with blue collars; holdout test wells with orange collars. Users can select rectangular areas on the basin and reveal the neural field's predictions, seeing what the model infers from sparse drilling data alone.</p>
+
+    <h2>8. Implications</h2>
+    <p>This experiment demonstrates both the potential and limitations of predicting subsurface geology from sparse drill hole data:</p>
+    <ul>
+        <li><strong>Major formations are learnable.</strong> The model reliably identifies Eromanga Basin, Galilee Basin, and other large units from their spatial distribution across 66 wells.</li>
+        <li><strong>Rare/thin formations need more data.</strong> With only 6&ndash;8 wells penetrating Boree Salt or Bury Limestone, the model cannot learn their complex spatial distribution.</li>
+        <li><strong>More wells = better predictions.</strong> Adding drilling data, especially in undersampled areas or targeting deeper formations, would significantly improve accuracy.</li>
+        <li><strong>Complementary data matters.</strong> The full geological model achieves much better results by incorporating seismic surveys, surface geology, structural interpretation, and other data sources beyond drill holes alone.</li>
+    </ul>
 
 </div>
 </body>
