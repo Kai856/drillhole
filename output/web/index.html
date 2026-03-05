@@ -97,6 +97,18 @@
         .tooltip { position: absolute; pointer-events: none; z-index: 25; background: rgba(0,0,0,0.85); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; font-size: 12px; color: var(--text); backdrop-filter: blur(4px); display: none; white-space: nowrap; transform: translate(12px, -50%); }
         .tooltip .tt-dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
         .tooltip .tt-name { vertical-align: middle; }
+        .tooltip .tt-conf { vertical-align: middle; font-size: 10px; color: var(--text-muted); margin-left: 6px; }
+
+        .prob-panel { margin-top: 8px; }
+        .prob-overall { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: var(--surface2); border-radius: 6px; margin-bottom: 8px; }
+        .prob-overall .label { font-size: 11px; color: var(--text-muted); }
+        .prob-overall .value { font-size: 14px; font-weight: 700; }
+        .prob-row { display: flex; align-items: center; gap: 6px; padding: 4px 0; }
+        .prob-row .fm-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+        .prob-row .fm-name { font-size: 11px; color: var(--text-muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .prob-row .fm-bar-bg { width: 50px; height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; flex-shrink: 0; }
+        .prob-row .fm-bar { height: 100%; border-radius: 3px; transition: width 0.3s ease; }
+        .prob-row .fm-stats { font-size: 10px; color: var(--text-muted); width: 72px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
     </style>
 </head>
 <body>
@@ -127,7 +139,7 @@
         <div class="loading-text">Loading drill hole data...</div>
     </div>
     <div class="select-rect" id="select-rect"></div>
-    <div class="tooltip" id="tooltip"><span class="tt-dot"></span><span class="tt-name"></span></div>
+    <div class="tooltip" id="tooltip"><span class="tt-dot"></span><span class="tt-name"></span><span class="tt-conf"></span></div>
     <div class="status-bar" id="status">Drag to rotate &middot; Scroll to zoom &middot; Select areas to predict</div>
 </div>
 </div>
@@ -218,6 +230,10 @@ function buildSidebar() {
                 <span class="toggle-pill on" id="fm-pill-${k}">On</span>
             </div>`).join('')}
         </div>
+        <div class="sidebar-section" id="prob-section" style="display:none">
+            <h3>Prediction Confidence</h3>
+            <div id="prob-content"></div>
+        </div>
     `;
 }
 buildSidebar();
@@ -296,11 +312,17 @@ function onHoverMove(e) {
     hoverRaycaster.setFromCamera(hoverMouse, camera);
     const hits = hoverRaycaster.intersectObjects(predGroup.children, false);
     if (hits.length > 0) {
-        const code = hits[0].object.userData.formationCode;
+        const obj = hits[0].object;
+        const code = obj.userData.formationCode;
         if (code && NAMES[code]) {
             const col = COLORS[code];
             tooltip.querySelector('.tt-dot').style.background = `rgb(${col.join(',')})`;
             tooltip.querySelector('.tt-name').textContent = NAMES[code];
+            const confEl = tooltip.querySelector('.tt-conf');
+            if (obj.userData.voxelProbs && hits[0].instanceId != null) {
+                const prob = obj.userData.voxelProbs[hits[0].instanceId];
+                confEl.textContent = prob != null ? `${(prob*100).toFixed(0)}%` : '';
+            } else { confEl.textContent = ''; }
             tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
             tooltip.style.top = (e.clientY - rect.top) + 'px';
             tooltip.style.display = 'block';
@@ -467,11 +489,15 @@ async function runPredictionInner() {
     const baseGeom = new THREE.BoxGeometry(cubeW * 0.92, cubeH * 0.92, cubeD * 0.92);
     let totalShown = 0;
 
+    const fmStats = {}; // code -> {count, probSum}
+    let allProbSum = 0;
+
     for (const [code, fm] of Object.entries(predData.formations)) {
         const codeInt = parseInt(code);
         const col = COLORS[codeInt];
         if (!col || hiddenFormations.has(codeInt)) continue;
         const positions = [];
+        const probs = [];
         for (let i = 0; i < fm.x.length; i++) {
             const vx = fm.x[i], vz = fm.y[i];
             let inside = false;
@@ -480,14 +506,20 @@ async function runPredictionInner() {
             }
             if (!inside) continue;
             positions.push(vx, fm.z[i], vz);
+            probs.push(fm.prob ? fm.prob[i] : 1.0);
         }
         const count = positions.length / 3;
         if (count === 0) continue;
         totalShown += count;
+        const probSum = probs.reduce((a, b) => a + b, 0);
+        allProbSum += probSum;
+        fmStats[codeInt] = { count, avgProb: probSum / count };
+
         const mesh = new THREE.InstancedMesh(baseGeom,
             new THREE.MeshPhongMaterial({ color: new THREE.Color(col[0]/255, col[1]/255, col[2]/255), transparent: true, opacity: predOpacity, depthWrite: false, side: THREE.DoubleSide }),
             count
         );
+        mesh.userData.voxelProbs = probs;
         const dummy = new THREE.Object3D();
         for (let i = 0; i < count; i++) {
             dummy.position.set(positions[i*3], positions[i*3+1], positions[i*3+2]);
@@ -498,7 +530,33 @@ async function runPredictionInner() {
         mesh.userData.formationCode = codeInt;
         predGroup.add(mesh);
     }
-    document.getElementById('status').textContent = `Showing ${totalShown.toLocaleString()} predicted voxels \u00b7 Trained on 66 real drill holes only`;
+
+    // Show probability panel
+    const avgConf = totalShown > 0 ? allProbSum / totalShown : 0;
+    const confColor = avgConf >= 0.8 ? 'var(--green)' : avgConf >= 0.6 ? 'var(--orange)' : 'var(--red)';
+    const probSection = document.getElementById('prob-section');
+    const probContent = document.getElementById('prob-content');
+    if (totalShown > 0) {
+        const sorted = Object.entries(fmStats).sort((a, b) => b[1].count - a[1].count);
+        let html = `<div class="prob-overall"><span class="label">Avg Confidence</span><span class="value" style="color:${confColor}">${(avgConf*100).toFixed(1)}%</span></div>`;
+        html += `<div class="prob-overall" style="margin-bottom:10px"><span class="label">Total Voxels</span><span class="value" style="font-size:12px">${totalShown.toLocaleString()}</span></div>`;
+        for (const [code, stats] of sorted) {
+            const col = COLORS[code];
+            const pct = (stats.count / totalShown * 100).toFixed(1);
+            const conf = (stats.avgProb * 100).toFixed(0);
+            const barColor = stats.avgProb >= 0.8 ? 'var(--green)' : stats.avgProb >= 0.6 ? 'var(--orange)' : 'var(--red)';
+            html += `<div class="prob-row">
+                <div class="fm-dot" style="background:rgb(${col.join(',')})"></div>
+                <span class="fm-name">${NAMES[code]}</span>
+                <div class="fm-bar-bg"><div class="fm-bar" style="width:${stats.avgProb*100}%;background:${barColor}"></div></div>
+                <span class="fm-stats">${pct}% · ${conf}%</span>
+            </div>`;
+        }
+        probContent.innerHTML = html;
+        probSection.style.display = 'block';
+    }
+
+    document.getElementById('status').textContent = `Showing ${totalShown.toLocaleString()} predicted voxels · Avg confidence: ${(avgConf*100).toFixed(1)}%`;
 }
 
 window.launchViewer = function() {
@@ -551,6 +609,7 @@ window.clearSelections = function() {
     while (selectionGroup.children.length) selectionGroup.remove(selectionGroup.children[0]);
     while (predGroup.children.length) predGroup.remove(predGroup.children[0]);
     updateSelectionUI();
+    document.getElementById('prob-section').style.display = 'none';
     document.getElementById('status').textContent = 'Drag to rotate \u00b7 Scroll to zoom \u00b7 Select areas to predict';
 };
 
