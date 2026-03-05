@@ -8,10 +8,10 @@
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
-            --bg: #18181b; --surface: #111113; --surface2: #18181b;
-            --border: #27272a; --text: #fafafa; --text-muted: #a1a1aa;
-            --accent: #8b5cf6; --accent-hover: #7c3aed;
-            --accent-glow: rgba(139,92,246,0.25); --green: #22c55e;
+            --bg: #0f1117; --surface: #161821; --surface2: #1c1e2a;
+            --border: #2a2d3a; --text: #e8eaed; --text-muted: #8b8fa3;
+            --accent: #3b82f6; --accent-hover: #2563eb;
+            --accent-glow: rgba(59,130,246,0.2); --green: #10b981;
         }
         body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); overflow: hidden; height: 100vh; }
 
@@ -22,8 +22,7 @@
         .landing-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse-dot 2s ease infinite; }
         @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.4} }
         .landing-title { font-size: clamp(40px,6vw,72px); font-weight: 700; letter-spacing: -0.04em; line-height: 1.05; text-align: center; max-width: 700px; margin-bottom: 16px; }
-        .landing-title .gradient { background: linear-gradient(135deg,#8b5cf6,#06b6d4,#8b5cf6); background-size: 200% 200%; -webkit-background-clip: text; -webkit-text-fill-color: transparent; animation: gradient-shift 6s ease infinite; }
-        @keyframes gradient-shift { 0%,100%{background-position:0% 50%} 50%{background-position:100% 50%} }
+        .landing-title .gradient { background: linear-gradient(135deg,#3b82f6,#60a5fa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .landing-subtitle { font-size: 18px; color: var(--text-muted); text-align: center; max-width: 520px; line-height: 1.6; margin-bottom: 48px; }
         .btn-predict { display: inline-flex; align-items: center; gap: 10px; padding: 16px 40px; background: var(--accent); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; font-family: inherit; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 0 0 0 var(--accent-glow); }
         .btn-predict:hover { background: var(--accent-hover); box-shadow: 0 0 40px 8px var(--accent-glow); transform: translateY(-1px); }
@@ -32,8 +31,8 @@
         .landing-stat { text-align: center; }
         .landing-stat .val { font-size: 28px; font-weight: 700; letter-spacing: -0.03em; }
         .landing-stat .lbl { font-size: 12px; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
-        .grid-bg { position: fixed; inset: 0; background-image: linear-gradient(rgba(139,92,246,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(139,92,246,0.03) 1px,transparent 1px); background-size: 60px 60px; pointer-events: none; z-index: 1; }
-        .radial-glow { position: fixed; top: -20%; left: 50%; transform: translateX(-50%); width: 800px; height: 600px; background: radial-gradient(ellipse,rgba(139,92,246,0.08),transparent 70%); pointer-events: none; z-index: 1; }
+        .grid-bg { position: fixed; inset: 0; background-image: linear-gradient(rgba(59,130,246,0.02) 1px,transparent 1px),linear-gradient(90deg,rgba(59,130,246,0.02) 1px,transparent 1px); background-size: 60px 60px; pointer-events: none; z-index: 1; }
+        .radial-glow { position: fixed; top: -20%; left: 50%; transform: translateX(-50%); width: 800px; height: 600px; background: radial-gradient(ellipse,rgba(59,130,246,0.06),transparent 70%); pointer-events: none; z-index: 1; }
 
         /* Viewer */
         #viewer { position: fixed; inset: 0; display: flex; opacity: 0; pointer-events: none; transition: opacity 0.5s ease 0.3s; z-index: 5; }
@@ -82,7 +81,7 @@
         .help-text { font-size: 10px; color: var(--text-muted); line-height: 1.5; margin-top: 6px; }
 
         /* Canvas */
-        #canvas-container { flex: 1; position: relative; background: #18181b; cursor: default; }
+        #canvas-container { flex: 1; position: relative; background: #0f1117; cursor: default; }
         .loading-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--bg); z-index: 20; transition: opacity 0.4s ease; }
         .loading-overlay.hidden { opacity: 0; pointer-events: none; }
         .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 16px; }
@@ -92,7 +91,7 @@
         /* 2D selection rectangle overlay */
         .select-rect {
             position: absolute; border: 2px solid var(--accent);
-            background: rgba(139,92,246,0.1);
+            background: rgba(59,130,246,0.1);
             pointer-events: none; z-index: 15; display: none;
         }
 
@@ -248,7 +247,7 @@ function screenToScene(screenX, screenY) {
 function initThree() {
     const c = document.getElementById('canvas-container');
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x18181b);
+    scene.background = new THREE.Color(0x0f1117);
 
     camera = new THREE.PerspectiveCamera(40, c.clientWidth / c.clientHeight, 0.1, 5000);
     camera.position.set(100, 120, 180);
@@ -395,7 +394,7 @@ function addSelectionVisual(box) {
     // Filled rectangle
     const fillGeom = new THREE.PlaneGeometry(w, d);
     fillGeom.rotateX(-Math.PI / 2);
-    const fillMat = new THREE.MeshBasicMaterial({ color: 0x8b5cf6, opacity: 0.1, transparent: true, side: THREE.DoubleSide, depthTest: false });
+    const fillMat = new THREE.MeshBasicMaterial({ color: 0x3b82f6, opacity: 0.1, transparent: true, side: THREE.DoubleSide, depthTest: false });
     const fill = new THREE.Mesh(fillGeom, fillMat);
     fill.position.set(cx, modelYTop + 0.1, cz);
     fill.renderOrder = 949;
@@ -410,7 +409,7 @@ function addSelectionVisual(box) {
         new THREE.Vector3(box.minX, modelYTop + 0.2, box.minZ),
     ];
     const lineGeom = new THREE.BufferGeometry().setFromPoints(pts);
-    const lineMat = new THREE.LineBasicMaterial({ color: 0x8b5cf6, opacity: 0.7, transparent: true, depthTest: false });
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x3b82f6, opacity: 0.7, transparent: true, depthTest: false });
     const line = new THREE.Line(lineGeom, lineMat);
     line.renderOrder = 950;
     selectionGroup.add(line);
