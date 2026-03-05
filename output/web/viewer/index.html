@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adavale Basin 3D Viewer</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a0a; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow: hidden; }
+
+#canvas-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; }
+
+#sidebar {
+    position: fixed; top: 0; left: 0; width: 300px; height: 100%;
+    background: rgba(15, 15, 25, 0.95); backdrop-filter: blur(10px);
+    border-right: 1px solid #2a2a4a; overflow-y: auto; z-index: 10;
+    padding: 20px 15px;
+}
+
+#sidebar h1 { font-size: 1.1em; color: #fff; margin-bottom: 5px; }
+#sidebar .subtitle { font-size: 0.75em; color: #666; margin-bottom: 20px; }
+
+.section-title {
+    font-size: 0.7em; text-transform: uppercase; letter-spacing: 1px;
+    color: #888; margin: 18px 0 8px; border-bottom: 1px solid #2a2a4a;
+    padding-bottom: 4px;
+}
+
+.formation-control {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; margin: 3px 0; border-radius: 6px;
+    background: rgba(255,255,255,0.03); cursor: pointer;
+    transition: background 0.15s;
+}
+.formation-control:hover { background: rgba(255,255,255,0.08); }
+
+.color-dot {
+    width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0;
+}
+
+.formation-name { font-size: 0.8em; flex: 1; }
+.formation-count { font-size: 0.65em; color: #666; }
+
+.vis-btn {
+    font-size: 0.6em; padding: 2px 6px; border-radius: 3px;
+    border: 1px solid #444; background: transparent; color: #aaa;
+    cursor: pointer; transition: all 0.15s;
+}
+.vis-btn.active { border-color: #4CAF50; color: #4CAF50; }
+.vis-btn:hover { border-color: #fff; color: #fff; }
+
+.opacity-row {
+    display: flex; align-items: center; gap: 6px;
+    padding: 2px 8px 6px 30px; font-size: 0.65em; color: #666;
+}
+.opacity-row label { min-width: 42px; }
+.opacity-row input[type=range] {
+    flex: 1; height: 3px; -webkit-appearance: none;
+    background: #333; border-radius: 2px; outline: none;
+}
+.opacity-row input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 12px; height: 12px;
+    border-radius: 50%; background: #fff; cursor: pointer;
+}
+.opacity-val { min-width: 28px; text-align: right; }
+
+.toggle-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px; margin: 3px 0; border-radius: 6px;
+    background: rgba(255,255,255,0.03); cursor: pointer;
+}
+.toggle-row .dot { width: 10px; height: 10px; border-radius: 50%; }
+
+#stats {
+    position: fixed; bottom: 15px; left: 315px;
+    background: rgba(15,15,25,0.9); border: 1px solid #2a2a4a;
+    border-radius: 8px; padding: 10px 15px; font-size: 0.75em; z-index: 10;
+}
+#stats span { color: #e94560; font-weight: bold; }
+
+#loading {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    background: rgba(15,15,25,0.95); border: 1px solid #2a2a4a;
+    border-radius: 12px; padding: 30px 50px; z-index: 100;
+    text-align: center;
+}
+#loading .spinner { font-size: 2em; animation: spin 1s linear infinite; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#loading-text { margin-top: 10px; font-size: 0.85em; color: #888; }
+
+.view-btn {
+    display: inline-block; padding: 4px 10px; margin: 2px;
+    border: 1px solid #444; border-radius: 4px; background: transparent;
+    color: #aaa; cursor: pointer; font-size: 0.7em; transition: all 0.15s;
+}
+.view-btn:hover { border-color: #e94560; color: #e94560; }
+</style>
+</head>
+<body>
+
+<div id="loading">
+    <div class="spinner">&#9881;</div>
+    <div id="loading-text">Loading formations...</div>
+</div>
+
+<div id="canvas-container"></div>
+
+<div id="sidebar">
+    <h1>Adavale Basin</h1>
+    <div class="subtitle">3D Geological Model + Neural Field Predictions</div>
+
+    <div class="section-title">Camera</div>
+    <div style="padding: 4px 8px;">
+        <button class="view-btn" onclick="setView('iso')">Isometric</button>
+        <button class="view-btn" onclick="setView('top')">Top</button>
+        <button class="view-btn" onclick="setView('front')">Front</button>
+        <button class="view-btn" onclick="setView('side')">Side</button>
+    </div>
+
+    <div class="section-title">Formations (Ground Truth)</div>
+    <div id="formation-controls"></div>
+
+    <div class="section-title">Overlays</div>
+    <div id="overlay-controls"></div>
+
+    <div class="section-title">Z Exaggeration</div>
+    <div class="opacity-row" style="padding-left: 8px;">
+        <label>Scale:</label>
+        <input type="range" min="1" max="50" value="15" id="z-scale-slider" oninput="setZScale(this.value)">
+        <span class="opacity-val" id="z-scale-val">15x</span>
+    </div>
+</div>
+
+<div id="stats"></div>
+
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ─── Globals ────────────────────────────────────────────────────────────
+let scene, camera, renderer, controls;
+let metadata;
+let formationMeshes = {};
+let drillHoleGroup, errorGroup;
+let zScale = 15;
+let sceneCenter;
+
+// ─── Scene setup ────────────────────────────────────────────────────────
+function initScene() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0a14);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 100, 5000000);
+
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.minDistance = 10000;
+    controls.maxDistance = 2000000;
+
+    // Lights
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+    dir.position.set(1, 1, 0.5).normalize();
+    scene.add(dir);
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+}
+
+// ─── Load metadata ──────────────────────────────────────────────────────
+async function loadMetadata() {
+    const resp = await fetch('metadata.json');
+    metadata = await resp.json();
+
+    const b = metadata.bounds;
+    sceneCenter = new THREE.Vector3(
+        (b.x[0] + b.x[1]) / 2,
+        (b.z[0] + b.z[1]) / 2 * zScale,
+        (b.y[0] + b.y[1]) / 2
+    );
+
+    controls.target.copy(sceneCenter);
+    camera.position.set(
+        sceneCenter.x + b.extent[0] * 0.8,
+        sceneCenter.y + b.extent[2] * zScale * 2,
+        sceneCenter.z + b.extent[1] * 0.8
+    );
+}
+
+// ─── Load formation cubes ───────────────────────────────────────────────
+async function loadFormation(name, info) {
+    const resp = await fetch(`${name}.bin`);
+    const buffer = await resp.arrayBuffer();
+    const positions = new Float32Array(buffer);
+    const count = positions.length / 3;
+
+    // InstancedMesh with cube geometry
+    const cubeSize = Math.abs(metadata.grid.spacing[0]) * 6; // step=6
+    const geo = new THREE.BoxGeometry(cubeSize, cubeSize * zScale * (20/500), cubeSize);
+    const mat = new THREE.MeshLambertMaterial({
+        color: info.color,
+        transparent: true,
+        opacity: 0.7,
+    });
+
+    const mesh = new THREE.InstancedMesh(geo, mat, count);
+    const dummy = new THREE.Object3D();
+
+    for (let i = 0; i < count; i++) {
+        // x -> x, z(geo) -> y(scene, up), y -> z(scene, depth)
+        dummy.position.set(
+            positions[i * 3],
+            positions[i * 3 + 2] * zScale,  // Z elevation -> Y up
+            positions[i * 3 + 1]             // Y northing -> Z
+        );
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+    }
+
+    mesh.instanceMatrix.needsUpdate = true;
+    scene.add(mesh);
+    formationMeshes[name] = { mesh, mat, visible: true, opacity: 0.7 };
+
+    return count;
+}
+
+// ─── Load drill holes ──────────────────────────────────────────────────
+function loadDrillHoles() {
+    drillHoleGroup = new THREE.Group();
+
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x4488ff, opacity: 0.6, transparent: true });
+    const collarMat = new THREE.MeshBasicMaterial({ color: 0xff4444 });
+    const collarGeo = new THREE.SphereGeometry(800, 6, 4);
+
+    for (const well of metadata.wells) {
+        // Vertical line
+        const pts = [
+            new THREE.Vector3(well.x, well.z_top * zScale, well.y),
+            new THREE.Vector3(well.x, well.z_bottom * zScale, well.y),
+        ];
+        const lineGeo = new THREE.BufferGeometry().setFromPoints(pts);
+        drillHoleGroup.add(new THREE.Line(lineGeo, lineMat));
+
+        // Collar dot at top
+        const collar = new THREE.Mesh(collarGeo, collarMat);
+        collar.position.set(well.x, well.z_top * zScale, well.y);
+        drillHoleGroup.add(collar);
+    }
+
+    scene.add(drillHoleGroup);
+}
+
+// ─── Load errors ───────────────────────────────────────────────────────
+async function loadErrors() {
+    const resp = await fetch('errors.bin');
+    const buffer = await resp.arrayBuffer();
+    const data = new Float32Array(buffer);
+    const count = data.length / 5;
+
+    errorGroup = new THREE.Group();
+
+    const cubeSize = Math.abs(metadata.grid.spacing[0]) * 6;
+    const geo = new THREE.BoxGeometry(cubeSize * 1.1, cubeSize * zScale * (20/500) * 1.1, cubeSize * 1.1);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xff2222, transparent: true, opacity: 0.8 });
+
+    const mesh = new THREE.InstancedMesh(geo, mat, count);
+    const dummy = new THREE.Object3D();
+
+    for (let i = 0; i < count; i++) {
+        dummy.position.set(
+            data[i * 5],
+            data[i * 5 + 2] * zScale,
+            data[i * 5 + 1]
+        );
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.visible = false; // hidden by default
+
+    errorGroup.add(mesh);
+    scene.add(errorGroup);
+}
+
+// ─── Build ground plane ────────────────────────────────────────────────
+function addGroundPlane() {
+    const b = metadata.bounds;
+    const w = b.x[1] - b.x[0];
+    const h = b.y[1] - b.y[0];
+    const geo = new THREE.PlaneGeometry(w, h);
+    const mat = new THREE.MeshBasicMaterial({
+        color: 0x1a1a2e, transparent: true, opacity: 0.3, side: THREE.DoubleSide
+    });
+    const plane = new THREE.Mesh(geo, mat);
+    plane.rotation.x = -Math.PI / 2;
+    plane.position.set((b.x[0]+b.x[1])/2, b.z[0] * zScale, (b.y[0]+b.y[1])/2);
+    scene.add(plane);
+
+    // Grid helper (axes)
+    const axesSize = Math.max(w, h) * 0.4;
+    const axes = new THREE.AxesHelper(axesSize);
+    axes.position.set(b.x[0], b.z[0] * zScale, b.y[0]);
+    scene.add(axes);
+}
+
+// ─── UI Controls ───────────────────────────────────────────────────────
+function buildUI() {
+    const container = document.getElementById('formation-controls');
+
+    const sorted = Object.entries(metadata.formations)
+        .sort((a, b) => b[1].count - a[1].count);
+
+    for (const [name, info] of sorted) {
+        const r = info.color_rgb[0], g = info.color_rgb[1], b = info.color_rgb[2];
+
+        const row = document.createElement('div');
+        row.innerHTML = `
+            <div class="formation-control" data-name="${name}">
+                <div class="color-dot" style="background: rgb(${r},${g},${b})"></div>
+                <span class="formation-name">${name}</span>
+                <span class="formation-count">${(info.count/1000).toFixed(1)}k</span>
+                <button class="vis-btn active" onclick="toggleFormation('${name}', this)">Visible</button>
+            </div>
+            <div class="opacity-row">
+                <label>Opacity:</label>
+                <input type="range" min="5" max="100" value="70"
+                       oninput="setOpacity('${name}', this.value, this)">
+                <span class="opacity-val">70%</span>
+            </div>
+        `;
+        container.appendChild(row);
+    }
+
+    // Overlay toggles
+    const overlays = document.getElementById('overlay-controls');
+    overlays.innerHTML = `
+        <div class="toggle-row" onclick="toggleDrillHoles(this)">
+            <div class="dot" style="background: #4488ff"></div>
+            <span class="formation-name">Drill Holes (${metadata.wells.length})</span>
+            <button class="vis-btn active">Visible</button>
+        </div>
+        <div class="toggle-row" onclick="toggleErrors(this)">
+            <div class="dot" style="background: #ff2222"></div>
+            <span class="formation-name">Prediction Errors (${metadata.errors.n_errors.toLocaleString()})</span>
+            <button class="vis-btn">Hidden</button>
+        </div>
+    `;
+
+    // Stats
+    const total = metadata.errors.n_errors + metadata.errors.n_correct;
+    const acc = ((metadata.errors.n_correct / total) * 100).toFixed(1);
+    document.getElementById('stats').innerHTML = `
+        Model Accuracy: <span>${acc}%</span> &nbsp;|&nbsp;
+        Formations: <span>13</span> &nbsp;|&nbsp;
+        Wells: <span>${metadata.wells.length}</span> &nbsp;|&nbsp;
+        Z Scale: <span id="z-info">${zScale}x</span>
+    `;
+}
+
+// ─── Interaction handlers ──────────────────────────────────────────────
+window.toggleFormation = function(name, btn) {
+    const f = formationMeshes[name];
+    if (!f) return;
+    f.visible = !f.visible;
+    f.mesh.visible = f.visible;
+    btn.classList.toggle('active');
+    btn.textContent = f.visible ? 'Visible' : 'Hidden';
+};
+
+window.setOpacity = function(name, val, input) {
+    const f = formationMeshes[name];
+    if (!f) return;
+    f.opacity = val / 100;
+    f.mat.opacity = f.opacity;
+    f.mat.needsUpdate = true;
+    input.parentElement.querySelector('.opacity-val').textContent = val + '%';
+};
+
+window.toggleDrillHoles = function(row) {
+    drillHoleGroup.visible = !drillHoleGroup.visible;
+    const btn = row.querySelector('.vis-btn');
+    btn.classList.toggle('active');
+    btn.textContent = drillHoleGroup.visible ? 'Visible' : 'Hidden';
+};
+
+window.toggleErrors = function(row) {
+    const mesh = errorGroup.children[0];
+    mesh.visible = !mesh.visible;
+    const btn = row.querySelector('.vis-btn');
+    btn.classList.toggle('active');
+    btn.textContent = mesh.visible ? 'Visible' : 'Hidden';
+};
+
+window.setZScale = function(val) {
+    // Z scale changes require rebuilding — just note it for now
+    document.getElementById('z-scale-val').textContent = val + 'x';
+    document.getElementById('z-info').textContent = val + 'x';
+
+    const newScale = parseFloat(val);
+    const ratio = newScale / zScale;
+
+    // Scale all formation meshes
+    for (const [name, f] of Object.entries(formationMeshes)) {
+        f.mesh.scale.y = ratio;
+    }
+    // Scale drill holes and errors
+    drillHoleGroup.scale.y = ratio;
+    errorGroup.scale.y = ratio;
+
+    // Update target
+    const b = metadata.bounds;
+    sceneCenter.y = (b.z[0] + b.z[1]) / 2 * newScale;
+    controls.target.y = sceneCenter.y;
+};
+
+window.setView = function(view) {
+    const b = metadata.bounds;
+    const cx = (b.x[0] + b.x[1]) / 2;
+    const cy = (b.z[0] + b.z[1]) / 2 * zScale;
+    const cz = (b.y[0] + b.y[1]) / 2;
+    const dist = b.extent[0];
+
+    controls.target.set(cx, cy, cz);
+
+    switch(view) {
+        case 'iso':
+            camera.position.set(cx + dist*0.7, cy + dist*0.5, cz + dist*0.7);
+            break;
+        case 'top':
+            camera.position.set(cx, cy + dist, cz);
+            break;
+        case 'front':
+            camera.position.set(cx, cy, cz + dist);
+            break;
+        case 'side':
+            camera.position.set(cx + dist, cy, cz);
+            break;
+    }
+};
+
+// ─── Animation loop ────────────────────────────────────────────────────
+function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+}
+
+// ─── Main ──────────────────────────────────────────────────────────────
+async function main() {
+    initScene();
+    await loadMetadata();
+
+    let totalCubes = 0;
+    const names = Object.keys(metadata.formations);
+
+    for (let i = 0; i < names.length; i++) {
+        const name = names[i];
+        document.getElementById('loading-text').textContent =
+            `Loading ${name}... (${i+1}/${names.length})`;
+        const count = await loadFormation(name, metadata.formations[name]);
+        totalCubes += count;
+    }
+
+    document.getElementById('loading-text').textContent = 'Loading drill holes...';
+    loadDrillHoles();
+
+    document.getElementById('loading-text').textContent = 'Loading predictions...';
+    await loadErrors();
+
+    addGroundPlane();
+    buildUI();
+
+    // Hide loading
+    document.getElementById('loading').style.display = 'none';
+
+    // Default: hide GRANI (basement) so you can see the basin
+    if (formationMeshes['GRANI']) {
+        formationMeshes['GRANI'].mesh.visible = false;
+        formationMeshes['GRANI'].visible = false;
+        const btn = document.querySelector('[data-name="GRANI"] .vis-btn');
+        if (btn) { btn.classList.remove('active'); btn.textContent = 'Hidden'; }
+    }
+
+    setView('iso');
+    animate();
+}
+
+main();
+</script>
+</body>
+</html>

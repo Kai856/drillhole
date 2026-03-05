@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adavale Basin - Neural Geological Prediction</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #18181b; --surface: #111113; --surface2: #18181b;
+            --border: #27272a; --text: #fafafa; --text-muted: #a1a1aa;
+            --accent: #8b5cf6; --accent-hover: #7c3aed;
+            --accent-glow: rgba(139,92,246,0.25); --green: #22c55e;
+        }
+        body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); overflow: hidden; height: 100vh; }
+
+        /* Landing */
+        #landing { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; transition: opacity 0.5s ease, transform 0.5s ease; position: relative; z-index: 10; }
+        #landing.hidden { opacity: 0; transform: scale(0.96); pointer-events: none; }
+        .landing-badge { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 999px; font-size: 13px; color: var(--text-muted); margin-bottom: 32px; }
+        .landing-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse-dot 2s ease infinite; }
+        @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        .landing-title { font-size: clamp(40px,6vw,72px); font-weight: 700; letter-spacing: -0.04em; line-height: 1.05; text-align: center; max-width: 700px; margin-bottom: 16px; }
+        .landing-title .gradient { background: linear-gradient(135deg,#8b5cf6,#06b6d4,#8b5cf6); background-size: 200% 200%; -webkit-background-clip: text; -webkit-text-fill-color: transparent; animation: gradient-shift 6s ease infinite; }
+        @keyframes gradient-shift { 0%,100%{background-position:0% 50%} 50%{background-position:100% 50%} }
+        .landing-subtitle { font-size: 18px; color: var(--text-muted); text-align: center; max-width: 520px; line-height: 1.6; margin-bottom: 48px; }
+        .btn-predict { display: inline-flex; align-items: center; gap: 10px; padding: 16px 40px; background: var(--accent); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; font-family: inherit; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 0 0 0 var(--accent-glow); }
+        .btn-predict:hover { background: var(--accent-hover); box-shadow: 0 0 40px 8px var(--accent-glow); transform: translateY(-1px); }
+        .btn-predict svg { width: 18px; height: 18px; }
+        .landing-stats { display: flex; gap: 40px; margin-top: 64px; }
+        .landing-stat { text-align: center; }
+        .landing-stat .val { font-size: 28px; font-weight: 700; letter-spacing: -0.03em; }
+        .landing-stat .lbl { font-size: 12px; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .grid-bg { position: fixed; inset: 0; background-image: linear-gradient(rgba(139,92,246,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(139,92,246,0.03) 1px,transparent 1px); background-size: 60px 60px; pointer-events: none; z-index: 1; }
+        .radial-glow { position: fixed; top: -20%; left: 50%; transform: translateX(-50%); width: 800px; height: 600px; background: radial-gradient(ellipse,rgba(139,92,246,0.08),transparent 70%); pointer-events: none; z-index: 1; }
+
+        /* Viewer */
+        #viewer { position: fixed; inset: 0; display: flex; opacity: 0; pointer-events: none; transition: opacity 0.5s ease 0.3s; z-index: 5; }
+        #viewer.active { opacity: 1; pointer-events: all; }
+
+        /* Sidebar */
+        .sidebar { width: 280px; min-width: 280px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+        .sidebar-header { padding: 16px 16px 12px; border-bottom: 1px solid var(--border); }
+        .sidebar-header h2 { font-size: 14px; font-weight: 600; }
+        .sidebar-header p { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+        .sidebar-back { display: inline-flex; align-items: center; gap: 6px; background: none; border: none; color: var(--text-muted); font-size: 11px; font-family: inherit; cursor: pointer; padding: 0; margin-bottom: 10px; }
+        .sidebar-back:hover { color: var(--text); }
+        .sidebar-section { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+        .sidebar-section h3 { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 10px; }
+        .metric-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .metric-row .label { font-size: 11px; color: var(--text-muted); }
+        .metric-row .value { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+        .metric-row .value.green { color: var(--green); }
+
+        .action-btn {
+            width: 100%; padding: 10px; margin-top: 4px;
+            background: var(--accent); color: white; border: none;
+            border-radius: 8px; font-size: 13px; font-weight: 600;
+            font-family: inherit; cursor: pointer; transition: all 0.15s;
+        }
+        .action-btn:hover { background: var(--accent-hover); }
+        .action-btn.active { background: #059669; }
+        .action-btn.danger { background: #dc2626; }
+        .action-btn.danger:hover { background: #b91c1c; }
+        .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .slider-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+        .slider-row label { font-size: 11px; color: var(--text-muted); white-space: nowrap; min-width: 48px; }
+        .slider-row input { flex: 1; accent-color: var(--accent); }
+        .slider-row .val { font-size: 11px; color: var(--text); width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+
+        .legend-item { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+        .legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+        .legend-name { font-size: 11px; color: var(--text-muted); }
+
+        .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; cursor: pointer; user-select: none; }
+        .toggle-row .label { font-size: 12px; }
+        .toggle-pill { font-size: 10px; padding: 2px 8px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted); }
+        .toggle-pill.on { background: var(--accent); border-color: var(--accent); color: white; }
+
+        .help-text { font-size: 10px; color: var(--text-muted); line-height: 1.5; margin-top: 6px; }
+
+        /* Canvas */
+        #canvas-container { flex: 1; position: relative; background: #18181b; cursor: default; }
+        .loading-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--bg); z-index: 20; transition: opacity 0.4s ease; }
+        .loading-overlay.hidden { opacity: 0; pointer-events: none; }
+        .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 16px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { font-size: 13px; color: var(--text-muted); }
+
+        /* 2D selection rectangle overlay */
+        .select-rect {
+            position: absolute; border: 2px solid var(--accent);
+            background: rgba(139,92,246,0.1);
+            pointer-events: none; z-index: 15; display: none;
+        }
+
+        .status-bar { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); font-size: 12px; color: var(--text-muted); background: rgba(0,0,0,0.75); padding: 8px 20px; border-radius: 8px; z-index: 10; backdrop-filter: blur(4px); border: 1px solid var(--border); }
+
+        .tooltip {
+            position: absolute; pointer-events: none; z-index: 25;
+            background: rgba(0,0,0,0.85); border: 1px solid var(--border);
+            border-radius: 6px; padding: 6px 12px; font-size: 12px;
+            color: var(--text); backdrop-filter: blur(4px);
+            display: none; white-space: nowrap;
+            transform: translate(12px, -50%);
+        }
+        .tooltip .tt-dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+        .tooltip .tt-name { vertical-align: middle; }
+    </style>
+</head>
+<body>
+<div class="grid-bg"></div>
+<div class="radial-glow"></div>
+
+<div id="landing">
+    <div class="landing-badge"><span class="dot"></span> Neural field trained &middot; 94.9% accuracy</div>
+    <h1 class="landing-title"><span class="gradient">Predict</span> subsurface geology</h1>
+    <p class="landing-subtitle">100 drill holes held out as validation. Select areas on the basin to reveal what the neural field predicts beneath the surface.</p>
+    <button class="btn-predict" onclick="launchViewer()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Predict
+    </button>
+    <div class="landing-stats">
+        <div class="landing-stat"><div class="val">109M</div><div class="lbl">Voxels</div></div>
+        <div class="landing-stat"><div class="val">13</div><div class="lbl">Formations</div></div>
+        <div class="landing-stat"><div class="val">100</div><div class="lbl">Drill Holes</div></div>
+        <div class="landing-stat"><div class="val">94.9%</div><div class="lbl">Accuracy</div></div>
+    </div>
+</div>
+
+<div id="viewer">
+    <div class="sidebar" id="sidebar"></div>
+    <div id="canvas-container">
+        <div class="loading-overlay" id="loading">
+            <div class="spinner"></div>
+            <div class="loading-text">Loading drill hole data...</div>
+        </div>
+        <div class="select-rect" id="select-rect"></div>
+        <div class="tooltip" id="tooltip"><span class="tt-dot"></span><span class="tt-name"></span></div>
+        <div class="status-bar" id="status">Drag to rotate &middot; Scroll to zoom &middot; Select areas to predict</div>
+    </div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/" } }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const COLORS = {
+    1:[131,112,255], 2:[138,70,93], 3:[68,138,0], 4:[126,255,0],
+    5:[0,138,138], 6:[255,246,142], 7:[135,205,249], 8:[255,130,249],
+    9:[205,133,0], 10:[205,54,0], 11:[0,177,237], 12:[232,149,121], 13:[205,198,114]
+};
+const NAMES = {
+    1:"Granite",2:"Gumbardo Fm",3:"Eastwood Fm",4:"Log Creek Fm",
+    5:"Bury Limestone",6:"Lissoy Fm",7:"Cooladdi Dolomite",8:"Boree Fm (Salt)",
+    9:"Etonvale Fm",10:"Buckabie Fm",11:"Galilee Basin",12:"Eromanga Basin",13:"Glendower Fm"
+};
+
+const SC = { xc:297750, yc:7172250, zc:-2710, scale:0.0006349206349206349, zScale:0.0125 };
+function toScene(wx, wy, wz) {
+    return new THREE.Vector3((wx - SC.xc) * SC.scale, (wz - SC.zc) * SC.zScale, (wy - SC.yc) * SC.scale);
+}
+
+let scene, camera, renderer, controls;
+let drillGroup, predGroup, selectionGroup;
+let predData = null;
+let selectMode = false;
+let predOpacity = 0.55;
+let hiddenFormations = new Set(); // formation codes to hide
+let selectionBoxes = []; // [{minX, minZ, maxX, maxZ} in scene coords]
+let raycaster, basePlane;
+let modelYTop = 0;
+
+// Drag-select state
+let isDragging = false;
+let dragStart = null;       // {screenX, screenY}
+let dragStartScene = null;  // {x, z} in scene coords
+
+function buildSidebar() {
+    document.getElementById('sidebar').innerHTML = `
+        <div class="sidebar-header">
+            <button class="sidebar-back" onclick="goBack()">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg> Back
+            </button>
+            <h2>Predictions</h2>
+            <p>Adavale Basin &middot; Neural Field</p>
+        </div>
+        <div class="sidebar-section">
+            <h3>Model</h3>
+            <div class="metric-row"><span class="label">Val Accuracy</span><span class="value green">94.9%</span></div>
+            <div class="metric-row"><span class="label">Train Loss</span><span class="value">0.150</span></div>
+            <div class="metric-row"><span class="label">Val Loss</span><span class="value">0.256</span></div>
+            <div class="metric-row"><span class="label">Holdout Wells</span><span class="value">100</span></div>
+            <button class="action-btn" onclick="window.open('methodology.html','_blank')" style="margin-top:8px;background:var(--surface2);border:1px solid var(--border)">View Full Methodology</button>
+        </div>
+        <div class="sidebar-section">
+            <h3>Drill Holes</h3>
+            <div class="toggle-row" onclick="toggleDrills()">
+                <span class="label">Show Wells</span>
+                <span class="toggle-pill on" id="drill-toggle">On</span>
+            </div>
+            <p class="help-text">100 validation wells. Colors = actual lithology from ground truth.</p>
+        </div>
+        <div class="sidebar-section">
+            <h3>Select Areas to Predict</h3>
+            <p class="help-text">1. Click "Select Areas" below<br>2. Click &amp; drag a rectangle on the basin<br>3. Click "Run Prediction" to reveal subsurface</p>
+            <button class="action-btn" id="select-btn" onclick="toggleSelectMode()" style="margin-top:10px">Select Areas</button>
+            <button class="action-btn" id="predict-btn" onclick="runPrediction()" style="margin-top:6px" disabled>Run Prediction</button>
+            <button class="action-btn danger" id="clear-btn" onclick="clearSelections()" style="margin-top:6px;display:none">Clear All</button>
+            <div class="slider-row">
+                <label>Opacity:</label>
+                <input type="range" min="10" max="100" value="55" oninput="setPredOpacity(this.value)">
+                <span class="val" id="opacity-val">55%</span>
+            </div>
+            <div id="selection-count" style="font-size:11px;color:var(--text-muted);margin-top:8px"></div>
+        </div>
+        <div class="sidebar-section">
+            <h3>Formations</h3>
+            <p class="help-text" style="margin-top:0;margin-bottom:6px">Click to show/hide in predictions</p>
+            ${Object.entries(NAMES).map(([k,n]) => `<div class="toggle-row" onclick="toggleFormation(${k})" id="fm-row-${k}">
+                <div style="display:flex;align-items:center;gap:8px"><div class="legend-dot" style="background:rgb(${COLORS[k].join(',')})"></div><span class="legend-name">${n}</span></div>
+                <span class="toggle-pill on" id="fm-pill-${k}">On</span>
+            </div>`).join('')}
+        </div>
+    `;
+}
+buildSidebar();
+
+function screenToScene(screenX, screenY) {
+    const rect = renderer.domElement.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+        ((screenX - rect.left) / rect.width) * 2 - 1,
+        -((screenY - rect.top) / rect.height) * 2 + 1
+    );
+    const rc = new THREE.Raycaster();
+    rc.setFromCamera(mouse, camera);
+    const hits = rc.intersectObject(basePlane);
+    if (hits.length > 0) return { x: hits[0].point.x, z: hits[0].point.z };
+    return null;
+}
+
+function initThree() {
+    const c = document.getElementById('canvas-container');
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x18181b);
+
+    camera = new THREE.PerspectiveCamera(40, c.clientWidth / c.clientHeight, 0.1, 5000);
+    camera.position.set(100, 120, 180);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(c.clientWidth, c.clientHeight);
+    c.appendChild(renderer.domElement);
+
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.target.set(0, 0, 0);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+    const d1 = new THREE.DirectionalLight(0xffffff, 0.5);
+    d1.position.set(100, 200, 100);
+    scene.add(d1);
+
+    drillGroup = new THREE.Group();
+    scene.add(drillGroup);
+    predGroup = new THREE.Group();
+    scene.add(predGroup);
+    selectionGroup = new THREE.Group();
+    scene.add(selectionGroup);
+
+    raycaster = new THREE.Raycaster();
+
+    // Pointer events for rectangle drag selection
+    renderer.domElement.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+
+    // Hover tooltip
+    renderer.domElement.addEventListener('mousemove', onHoverMove);
+
+    window.addEventListener('resize', () => {
+        camera.aspect = c.clientWidth / c.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(c.clientWidth, c.clientHeight);
+    });
+
+    animate();
+}
+
+const hoverRaycaster = new THREE.Raycaster();
+const hoverMouse = new THREE.Vector2();
+
+function onHoverMove(e) {
+    const tooltip = document.getElementById('tooltip');
+    if (isDragging || selectMode || predGroup.children.length === 0) {
+        tooltip.style.display = 'none';
+        return;
+    }
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    hoverMouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    hoverMouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    hoverRaycaster.setFromCamera(hoverMouse, camera);
+
+    const hits = hoverRaycaster.intersectObjects(predGroup.children, false);
+    if (hits.length > 0) {
+        const mesh = hits[0].object;
+        const code = mesh.userData.formationCode;
+        if (code && NAMES[code]) {
+            const col = COLORS[code];
+            tooltip.querySelector('.tt-dot').style.background = `rgb(${col.join(',')})`;
+            tooltip.querySelector('.tt-name').textContent = NAMES[code];
+            tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
+            tooltip.style.top = (e.clientY - rect.top) + 'px';
+            tooltip.style.display = 'block';
+            return;
+        }
+    }
+    tooltip.style.display = 'none';
+}
+
+function onPointerDown(e) {
+    if (!selectMode) return;
+    // Disable orbit controls during selection drag
+    const scenePos = screenToScene(e.clientX, e.clientY);
+    if (!scenePos) return;
+
+    isDragging = true;
+    dragStart = { screenX: e.clientX, screenY: e.clientY };
+    dragStartScene = scenePos;
+    controls.enabled = false;
+
+    const rectEl = document.getElementById('select-rect');
+    rectEl.style.left = e.clientX - renderer.domElement.getBoundingClientRect().left + 'px';
+    rectEl.style.top = e.clientY - renderer.domElement.getBoundingClientRect().top + 'px';
+    rectEl.style.width = '0px';
+    rectEl.style.height = '0px';
+    rectEl.style.display = 'block';
+}
+
+function onPointerMove(e) {
+    if (!isDragging) return;
+    const rect = renderer.domElement.getBoundingClientRect();
+    const rectEl = document.getElementById('select-rect');
+
+    const x1 = dragStart.screenX - rect.left;
+    const y1 = dragStart.screenY - rect.top;
+    const x2 = e.clientX - rect.left;
+    const y2 = e.clientY - rect.top;
+
+    rectEl.style.left = Math.min(x1, x2) + 'px';
+    rectEl.style.top = Math.min(y1, y2) + 'px';
+    rectEl.style.width = Math.abs(x2 - x1) + 'px';
+    rectEl.style.height = Math.abs(y2 - y1) + 'px';
+}
+
+function onPointerUp(e) {
+    if (!isDragging) return;
+    isDragging = false;
+    controls.enabled = true;
+    document.getElementById('select-rect').style.display = 'none';
+
+    // Minimum drag distance to count as selection (not accidental click)
+    const dx = e.clientX - dragStart.screenX;
+    const dy = e.clientY - dragStart.screenY;
+    if (Math.sqrt(dx*dx + dy*dy) < 10) return;
+
+    const dragEndScene = screenToScene(e.clientX, e.clientY);
+    if (!dragEndScene) return;
+
+    const box = {
+        minX: Math.min(dragStartScene.x, dragEndScene.x),
+        maxX: Math.max(dragStartScene.x, dragEndScene.x),
+        minZ: Math.min(dragStartScene.z, dragEndScene.z),
+        maxZ: Math.max(dragStartScene.z, dragEndScene.z),
+    };
+    selectionBoxes.push(box);
+    addSelectionVisual(box);
+    updateSelectionUI();
+}
+
+function addSelectionVisual(box) {
+    const w = box.maxX - box.minX;
+    const d = box.maxZ - box.minZ;
+    const cx = (box.minX + box.maxX) / 2;
+    const cz = (box.minZ + box.maxZ) / 2;
+
+    // Filled rectangle
+    const fillGeom = new THREE.PlaneGeometry(w, d);
+    fillGeom.rotateX(-Math.PI / 2);
+    const fillMat = new THREE.MeshBasicMaterial({ color: 0x8b5cf6, opacity: 0.1, transparent: true, side: THREE.DoubleSide, depthTest: false });
+    const fill = new THREE.Mesh(fillGeom, fillMat);
+    fill.position.set(cx, modelYTop + 0.1, cz);
+    fill.renderOrder = 949;
+    selectionGroup.add(fill);
+
+    // Border outline
+    const pts = [
+        new THREE.Vector3(box.minX, modelYTop + 0.2, box.minZ),
+        new THREE.Vector3(box.maxX, modelYTop + 0.2, box.minZ),
+        new THREE.Vector3(box.maxX, modelYTop + 0.2, box.maxZ),
+        new THREE.Vector3(box.minX, modelYTop + 0.2, box.maxZ),
+        new THREE.Vector3(box.minX, modelYTop + 0.2, box.minZ),
+    ];
+    const lineGeom = new THREE.BufferGeometry().setFromPoints(pts);
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x8b5cf6, opacity: 0.7, transparent: true, depthTest: false });
+    const line = new THREE.Line(lineGeom, lineMat);
+    line.renderOrder = 950;
+    selectionGroup.add(line);
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+}
+
+async function loadWells() {
+    const resp = await fetch('wells.json');
+    const wells = await resp.json();
+
+    let yMax = -Infinity;
+
+    for (const well of wells) {
+        const topSeg = well.segments[0];
+        if (!topSeg) continue;
+        const top = toScene(well.x, well.y, topSeg.zTop);
+        if (top.y > yMax) yMax = top.y;
+
+        // Collar
+        const dotG = new THREE.SphereGeometry(0.7, 8, 8);
+        const dotM = new THREE.MeshBasicMaterial({ color: 0xef4444, depthTest: false });
+        const dot = new THREE.Mesh(dotG, dotM);
+        dot.position.set(top.x, top.y + 0.5, top.z);
+        dot.renderOrder = 999;
+        drillGroup.add(dot);
+
+        // Colored lithology segments
+        for (const seg of well.segments) {
+            const p1 = toScene(well.x, well.y, seg.zTop);
+            const p2 = toScene(well.x, well.y, seg.zBot);
+            const col = COLORS[seg.lith] || [128,128,128];
+            const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(col[0]/255, col[1]/255, col[2]/255), depthTest: false });
+            const geom = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+            const line = new THREE.Line(geom, mat);
+            line.renderOrder = 998;
+            drillGroup.add(line);
+        }
+
+        // Thin grey stem
+        const bot = toScene(well.x, well.y, -5990);
+        const gMat = new THREE.LineBasicMaterial({ color: 0x333333, opacity: 0.25, transparent: true, depthTest: false });
+        drillGroup.add(new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(top.x, top.y + 0.5, top.z), bot]),
+            gMat
+        ));
+    }
+
+    modelYTop = yMax + 2;
+
+    // Invisible base plane at model top for click raycasting
+    const gpGeom = new THREE.PlaneGeometry(500, 500);
+    gpGeom.rotateX(-Math.PI / 2);
+    basePlane = new THREE.Mesh(gpGeom, new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide }));
+    basePlane.position.y = modelYTop;
+    scene.add(basePlane);
+
+    // Subtle grid
+    const gridHelper = new THREE.GridHelper(200, 40, 0x222222, 0x181818);
+    gridHelper.position.y = modelYTop - 0.1;
+    scene.add(gridHelper);
+
+    document.getElementById('loading').classList.add('hidden');
+}
+
+function updateSelectionUI() {
+    const n = selectionBoxes.length;
+    document.getElementById('selection-count').textContent = n > 0 ? `${n} area${n > 1 ? 's' : ''} selected` : '';
+    document.getElementById('predict-btn').disabled = n === 0;
+    document.getElementById('clear-btn').style.display = n > 0 ? 'block' : 'none';
+}
+
+async function loadPredictions() {
+    if (predData) return;
+    document.getElementById('status').textContent = 'Loading prediction data...';
+    const resp = await fetch('predictions.json');
+    predData = await resp.json();
+}
+
+async function runPredictionInner() {
+    await loadPredictions();
+    if (!predData || selectionBoxes.length === 0) return;
+
+    while (predGroup.children.length) { predGroup.remove(predGroup.children[0]); }
+
+    const cubeW = predData.scene.cubeSize[0];
+    const cubeH = predData.scene.cubeSize[2];
+    const cubeD = predData.scene.cubeSize[1];
+    const baseGeom = new THREE.BoxGeometry(cubeW * 0.92, cubeH * 0.92, cubeD * 0.92);
+
+    let totalShown = 0;
+
+    for (const [code, fm] of Object.entries(predData.formations)) {
+        const codeInt = parseInt(code);
+        const col = COLORS[codeInt];
+        if (!col) continue;
+        if (hiddenFormations.has(codeInt)) continue;
+
+        const positions = [];
+        for (let i = 0; i < fm.x.length; i++) {
+            const vx = fm.x[i];
+            const vz = fm.y[i];
+
+            let inside = false;
+            for (const box of selectionBoxes) {
+                if (vx >= box.minX && vx <= box.maxX && vz >= box.minZ && vz <= box.maxZ) {
+                    inside = true; break;
+                }
+            }
+            if (!inside) continue;
+
+            positions.push(vx, fm.z[i], vz);
+        }
+
+        const count = positions.length / 3;
+        if (count === 0) continue;
+        totalShown += count;
+
+        const mesh = new THREE.InstancedMesh(baseGeom,
+            new THREE.MeshPhongMaterial({
+                color: new THREE.Color(col[0]/255, col[1]/255, col[2]/255),
+                transparent: true, opacity: predOpacity, depthWrite: false, side: THREE.DoubleSide,
+            }),
+            count
+        );
+
+        const dummy = new THREE.Object3D();
+        for (let i = 0; i < count; i++) {
+            dummy.position.set(positions[i*3], positions[i*3+1], positions[i*3+2]);
+            dummy.updateMatrix();
+            mesh.setMatrixAt(i, dummy.matrix);
+        }
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.userData.formationCode = codeInt;
+        predGroup.add(mesh);
+    }
+
+    document.getElementById('status').textContent = `Showing ${totalShown.toLocaleString()} predicted voxels in ${selectionBoxes.length} area${selectionBoxes.length > 1 ? 's' : ''}`;
+}
+
+// Globals
+window.launchViewer = function() {
+    document.getElementById('landing').classList.add('hidden');
+    document.getElementById('viewer').classList.add('active');
+    if (!scene) { initThree(); loadWells(); }
+};
+
+window.goBack = function() {
+    document.getElementById('viewer').classList.remove('active');
+    document.getElementById('landing').classList.remove('hidden');
+};
+
+window.toggleDrills = function() {
+    drillGroup.visible = !drillGroup.visible;
+    const t = document.getElementById('drill-toggle');
+    t.textContent = drillGroup.visible ? 'On' : 'Off';
+    t.classList.toggle('on', drillGroup.visible);
+};
+
+window.toggleSelectMode = function() {
+    selectMode = !selectMode;
+    const btn = document.getElementById('select-btn');
+    const container = document.getElementById('canvas-container');
+    if (selectMode) {
+        btn.textContent = 'Selecting... (drag to draw)';
+        btn.classList.add('active');
+        container.style.cursor = 'crosshair';
+        document.getElementById('status').textContent = 'Click & drag to draw a selection rectangle on the basin';
+    } else {
+        btn.textContent = 'Select Areas';
+        btn.classList.remove('active');
+        container.style.cursor = 'default';
+        document.getElementById('status').textContent = 'Drag to rotate \u00b7 Scroll to zoom \u00b7 Select areas to predict';
+    }
+};
+
+window.runPrediction = function() {
+    const btn = document.getElementById('predict-btn');
+    btn.textContent = 'Predicting...';
+    btn.disabled = true;
+    selectMode = false;
+    document.getElementById('select-btn').textContent = 'Select Areas';
+    document.getElementById('select-btn').classList.remove('active');
+    document.getElementById('canvas-container').style.cursor = 'default';
+
+    setTimeout(async () => {
+        await runPredictionInner();
+        btn.textContent = 'Run Prediction';
+        btn.disabled = false;
+    }, 50);
+};
+
+window.clearSelections = function() {
+    selectionBoxes = [];
+    while (selectionGroup.children.length) selectionGroup.remove(selectionGroup.children[0]);
+    while (predGroup.children.length) predGroup.remove(predGroup.children[0]);
+    updateSelectionUI();
+    document.getElementById('status').textContent = 'Drag to rotate \u00b7 Scroll to zoom \u00b7 Select areas to predict';
+};
+
+window.toggleFormation = function(code) {
+    if (hiddenFormations.has(code)) {
+        hiddenFormations.delete(code);
+    } else {
+        hiddenFormations.add(code);
+    }
+    const pill = document.getElementById('fm-pill-' + code);
+    const dot = document.querySelector('#fm-row-' + code + ' .legend-dot');
+    if (hiddenFormations.has(code)) {
+        pill.textContent = 'Off';
+        pill.classList.remove('on');
+        dot.style.opacity = '0.25';
+    } else {
+        pill.textContent = 'On';
+        pill.classList.add('on');
+        dot.style.opacity = '1';
+    }
+    // Re-render predictions if they exist
+    if (predGroup.children.length > 0 && selectionBoxes.length > 0) {
+        runPredictionInner();
+    }
+};
+
+window.setPredOpacity = function(val) {
+    predOpacity = parseInt(val) / 100;
+    document.getElementById('opacity-val').textContent = val + '%';
+    predGroup.children.forEach(m => { if (m.material) m.material.opacity = predOpacity; });
+};
+</script>
+</body>
+</html>

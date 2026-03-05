@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Methodology - Adavale Basin Neural Field</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #18181b; --surface: #111113; --surface2: #18181b;
+            --border: #27272a; --text: #fafafa; --text-muted: #a1a1aa;
+            --accent: #8b5cf6; --green: #22c55e;
+        }
+        body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
+        .container { max-width: 720px; margin: 0 auto; padding: 60px 24px 120px; }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .back { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); margin-bottom: 40px; }
+        .back:hover { color: var(--text); text-decoration: none; }
+        h1 { font-size: 36px; font-weight: 700; letter-spacing: -0.03em; margin-bottom: 8px; }
+        .subtitle { font-size: 16px; color: var(--text-muted); margin-bottom: 48px; }
+        h2 { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; margin-top: 48px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+        p { color: var(--text-muted); margin-bottom: 16px; font-size: 15px; }
+        p strong { color: var(--text); font-weight: 500; }
+        .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; margin: 20px 0; }
+        .card h3 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 12px; }
+        .metric { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+        .metric:last-child { border-bottom: none; }
+        .metric .label { color: var(--text-muted); }
+        .metric .val { font-weight: 600; font-variant-numeric: tabular-nums; }
+        .metric .val.green { color: var(--green); }
+        .metric .val.amber { color: #f59e0b; }
+        .metric .val.red { color: #ef4444; }
+        code { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; font-size: 13px; font-family: 'SF Mono', 'Fira Code', monospace; }
+        .arch-diagram { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin: 20px 0; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; color: var(--text-muted); line-height: 2; text-align: center; }
+        .arch-diagram .layer { color: var(--text); }
+        .arch-diagram .arrow { color: var(--accent); }
+        ul { color: var(--text-muted); font-size: 15px; padding-left: 24px; margin-bottom: 16px; }
+        li { margin-bottom: 8px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <a href="index.html" class="back">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
+        Back to viewer
+    </a>
+
+    <h1>Methodology</h1>
+    <p class="subtitle">Neural field prediction of subsurface geology in the Adavale Basin, Queensland, Australia.</p>
+
+    <h2>1. Data Source</h2>
+    <p>The input data is a <strong>3D voxel grid</strong> exported from a GoCAD geological model of the Adavale Basin. The grid has dimensions <strong>512 x 634 x 335</strong> (108,584,480 voxels), with a spatial resolution of 500m x 500m x 20m (horizontal x vertical). The coordinate reference system is <strong>GDA94 / MGA Zone 55</strong>.</p>
+    <p>Each voxel contains an integer lithology code (1-13) identifying one of 13 geological formations, ranging from deep basement granite to shallow Cenozoic sediments. The data was loaded from a GoCAD <code>.vop1</code> binary file (big-endian float32, Fortran column-major order).</p>
+
+    <div class="card">
+        <h3>Grid Parameters</h3>
+        <div class="metric"><span class="label">Dimensions</span><span class="val">512 x 634 x 335</span></div>
+        <div class="metric"><span class="label">Total Voxels</span><span class="val">108,584,480</span></div>
+        <div class="metric"><span class="label">Valid Voxels</span><span class="val">~102M</span></div>
+        <div class="metric"><span class="label">Horizontal Spacing</span><span class="val">500m x 500m</span></div>
+        <div class="metric"><span class="label">Vertical Spacing</span><span class="val">20m</span></div>
+        <div class="metric"><span class="label">Origin (X, Y, Z)</span><span class="val">170250, 7329750, 690</span></div>
+        <div class="metric"><span class="label">Formations</span><span class="val">13 classes</span></div>
+    </div>
+
+    <h2>2. Architecture</h2>
+    <p>The model is a <strong>neural field</strong> (also called a neural implicit function): a function <code>f(x, y, z) &rarr; lithology class</code> that takes a 3D coordinate and predicts the geological formation at that location.</p>
+
+    <p>The architecture consists of:</p>
+    <ul>
+        <li><strong>Fourier positional encoding</strong> with 10 frequency bands. Each input coordinate is expanded into sine and cosine components at exponentially increasing frequencies (2^0 to 2^9), producing a 63-dimensional encoding from the 3 input coordinates. This enables the network to learn high-frequency spatial patterns.</li>
+        <li><strong>5-layer MLP</strong> with 256 hidden units per layer, using ReLU activations.</li>
+        <li><strong>Skip connection</strong> at the mid-layer (layer 3), where the original positional encoding is concatenated back into the hidden representation. This helps preserve fine spatial detail through the network depth.</li>
+        <li><strong>Classification head</strong>: a linear layer mapping from 256 to 13 output logits.</li>
+    </ul>
+
+    <div class="arch-diagram">
+        <span class="layer">(x, y, z)</span> <span class="arrow">&rarr;</span>
+        <span class="layer">Positional Encoding (63-dim)</span> <span class="arrow">&rarr;</span><br>
+        <span class="layer">Linear(63, 256) + ReLU</span> <span class="arrow">&rarr;</span>
+        <span class="layer">Linear(256, 256) + ReLU</span> <span class="arrow">&rarr;</span><br>
+        <span style="color:var(--accent)">[skip: concat encoding]</span> <span class="arrow">&rarr;</span>
+        <span class="layer">Linear(319, 256) + ReLU</span> <span class="arrow">&rarr;</span><br>
+        <span class="layer">Linear(256, 256) + ReLU</span> <span class="arrow">&rarr;</span>
+        <span class="layer">Linear(256, 13)</span> <span class="arrow">&rarr;</span>
+        <span class="layer">logits</span>
+    </div>
+
+    <div class="card">
+        <h3>Model Parameters</h3>
+        <div class="metric"><span class="label">Total Parameters</span><span class="val">~530K</span></div>
+        <div class="metric"><span class="label">Positional Encoding Freqs</span><span class="val">10</span></div>
+        <div class="metric"><span class="label">Hidden Dim</span><span class="val">256</span></div>
+        <div class="metric"><span class="label">Layers</span><span class="val">5</span></div>
+        <div class="metric"><span class="label">Skip Connection</span><span class="val">At layer 3</span></div>
+    </div>
+
+    <h2>3. Train / Validation Split</h2>
+    <p>Instead of a random voxel-level split (which would leak spatial information), the model uses a <strong>drill-hole holdout strategy</strong> designed to simulate real-world prediction scenarios.</p>
+    <p><strong>100 synthetic wells</strong> are randomly placed across the basin (seed=42). Each well is a 10x10 cell block (5km x 5km) extending through the entire depth of the model. All voxels within these well columns are held out from training &mdash; the model never sees any data from these locations.</p>
+    <p>This means the model must <strong>spatially interpolate</strong> to predict geology at the holdout locations, just as it would when predicting at a real undrilled location. This is a much harder test than random splitting, which would allow the model to memorize nearby voxels.</p>
+
+    <div class="card">
+        <h3>Split Statistics</h3>
+        <div class="metric"><span class="label">Method</span><span class="val">Drill-hole holdout</span></div>
+        <div class="metric"><span class="label">Number of Wells</span><span class="val">100</span></div>
+        <div class="metric"><span class="label">Well Size</span><span class="val">5km x 5km (full depth)</span></div>
+        <div class="metric"><span class="label">Training Voxels</span><span class="val">99,043,754</span></div>
+        <div class="metric"><span class="label">Validation Voxels</span><span class="val">3,116,115</span></div>
+        <div class="metric"><span class="label">Val Fraction</span><span class="val">3.3%</span></div>
+    </div>
+
+    <h2>4. Training</h2>
+    <p>The model is trained for <strong>30 epochs</strong> using the following configuration:</p>
+    <ul>
+        <li><strong>Loss function</strong>: Cross-entropy with inverse-frequency class weights, ensuring rare formations (like Boree Salt) receive higher loss penalties.</li>
+        <li><strong>Optimizer</strong>: Adam with initial learning rate 1e-3.</li>
+        <li><strong>Scheduler</strong>: Cosine annealing (decays lr to ~0 over 30 epochs).</li>
+        <li><strong>Batch size</strong>: 131,072 voxels per batch.</li>
+        <li><strong>Epoch subsampling</strong>: Each epoch randomly samples 10M voxels from the 99M training set (not all voxels are seen each epoch). This dramatically speeds up training while maintaining convergence.</li>
+        <li><strong>Validation subsampling</strong>: 2M voxels sampled from the 3.1M holdout set each epoch.</li>
+        <li><strong>Coordinate normalization</strong>: All (x, y, z) coordinates are normalized to [-1, 1] before input.</li>
+        <li><strong>Device</strong>: Apple MPS (Metal Performance Shaders).</li>
+    </ul>
+
+    <div class="card">
+        <h3>Training Configuration</h3>
+        <div class="metric"><span class="label">Epochs</span><span class="val">30</span></div>
+        <div class="metric"><span class="label">Batch Size</span><span class="val">131,072</span></div>
+        <div class="metric"><span class="label">Learning Rate</span><span class="val">1e-3 (cosine)</span></div>
+        <div class="metric"><span class="label">Samples / Epoch</span><span class="val">10M (of 99M)</span></div>
+        <div class="metric"><span class="label">Val Samples / Epoch</span><span class="val">2M (of 3.1M)</span></div>
+        <div class="metric"><span class="label">Final Train Loss</span><span class="val">0.150</span></div>
+        <div class="metric"><span class="label">Final Val Loss</span><span class="val">0.256</span></div>
+        <div class="metric"><span class="label">Best Val Accuracy</span><span class="val green">94.9%</span></div>
+    </div>
+
+    <h2>5. Results</h2>
+    <p>The model achieves <strong>94.9% overall validation accuracy</strong> on the held-out drill holes. Performance varies by formation &mdash; large, spatially continuous formations like Glendower and Eromanga are predicted near-perfectly, while thin or spatially complex units like Boree Salt are harder.</p>
+
+    <div class="card">
+        <h3>Per-Formation Validation Accuracy</h3>
+        <div class="metric"><span class="label">Glendower Fm</span><span class="val green">99.96%</span></div>
+        <div class="metric"><span class="label">Bury Limestone</span><span class="val green">96.75%</span></div>
+        <div class="metric"><span class="label">Eromanga Basin</span><span class="val green">96.17%</span></div>
+        <div class="metric"><span class="label">Galilee Basin</span><span class="val green">95.50%</span></div>
+        <div class="metric"><span class="label">Granite (Basement)</span><span class="val green">95.35%</span></div>
+        <div class="metric"><span class="label">Buckabie Fm</span><span class="val green">95.22%</span></div>
+        <div class="metric"><span class="label">Eastwood Fm</span><span class="val">89.77%</span></div>
+        <div class="metric"><span class="label">Gumbardo Fm</span><span class="val">89.20%</span></div>
+        <div class="metric"><span class="label">Log Creek Fm</span><span class="val">87.50%</span></div>
+        <div class="metric"><span class="label">Etonvale Fm</span><span class="val">87.12%</span></div>
+        <div class="metric"><span class="label">Cooladdi Dolomite</span><span class="val amber">74.97%</span></div>
+        <div class="metric"><span class="label">Lissoy Fm</span><span class="val amber">66.39%</span></div>
+        <div class="metric"><span class="label">Boree Fm (Salt)</span><span class="val red">47.98%</span></div>
+    </div>
+
+    <h2>6. Inference & Visualization</h2>
+    <p>The best checkpoint is used to predict lithology for all 109M voxels in the original grid, producing a complete 3D predicted volume at full resolution. This volume is subsampled (every 10th voxel) and exported as JSON for the interactive web viewer.</p>
+    <p>The viewer renders <strong>100 validation drill holes</strong> showing real lithology from the ground truth volume. Users can select rectangular areas on the basin and reveal the neural field's predictions in those regions, allowing direct visual comparison between known well data and model predictions.</p>
+
+</div>
+</body>
+</html>
