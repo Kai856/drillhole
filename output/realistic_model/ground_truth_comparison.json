@@ -1,0 +1,58 @@
+{
+  "overall_accuracy": 0.4354,
+  "n_voxels": 102159869,
+  "per_class": {
+    "GRANI": {
+      "accuracy": 0.2866,
+      "count": 63323949
+    },
+    "GUMBA": {
+      "accuracy": 0.2453,
+      "count": 2996019
+    },
+    "EASTW": {
+      "accuracy": 0.3066,
+      "count": 653418
+    },
+    "LOG": {
+      "accuracy": 0.3248,
+      "count": 2121088
+    },
+    "BURY": {
+      "accuracy": 0.4656,
+      "count": 408944
+    },
+    "LISSO": {
+      "accuracy": 0.0937,
+      "count": 64756
+    },
+    "COOLA": {
+      "accuracy": 0.1016,
+      "count": 79002
+    },
+    "BOREE": {
+      "accuracy": 0.3122,
+      "count": 55948
+    },
+    "ETONV": {
+      "accuracy": 0.2297,
+      "count": 3451477
+    },
+    "BUCKA": {
+      "accuracy": 0.5774,
+      "count": 3693956
+    },
+    "GALILEE": {
+      "accuracy": 0.5899,
+      "count": 3401141
+    },
+    "EROMANGA": {
+      "accuracy": 0.8951,
+      "count": 21591309
+    },
+    "GLEND": {
+      "accuracy": 0.7064,
+      "count": 318862
+    }
+  }
+}
